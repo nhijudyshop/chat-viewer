@@ -186,13 +186,18 @@ function ChatApp() {
         if (!isAuthenticated || !token) return;
 
         console.log('🔌 Connecting to WebSocket servers...');
+        console.log('🔑 Using token:', token.substring(0, 20) + '...');
 
-        // Connection 1: rt-2.tpos.app with /chatomni namespace
-        const rtSocketInstance = io('wss://rt-2.tpos.app/chatomni', {
+        // Connection 1: rt-2.tpos.app - Try default namespace first
+        const rtSocketInstance = io('wss://rt-2.tpos.app', {
             transports: ['websocket'],
             query: {
                 room: 'tomato.tpos.vn',
+                token: token,
                 EIO: '4'
+            },
+            auth: {
+                token: token
             },
             reconnection: true,
             reconnectionDelay: 1000,
@@ -204,7 +209,11 @@ function ChatApp() {
             transports: ['websocket'],
             query: {
                 room: 'tomato.tpos.vn',
+                token: token,
                 EIO: '4'
+            },
+            auth: {
+                token: token
             },
             reconnection: true,
             reconnectionDelay: 1000,
@@ -213,76 +222,123 @@ function ChatApp() {
 
         // RT Socket (rt-2.tpos.app) event handlers
         rtSocketInstance.on('connect', () => {
-            console.log('✅ RT WebSocket connected:', rtSocketInstance.id);
+            console.log('✅ [RT] WebSocket connected:', rtSocketInstance.id);
             setRtSocketConnected(true);
+
+            // Try multiple authentication methods
+            console.log('🔐 [RT] Trying multiple auth methods...');
+            rtSocketInstance.emit('authenticate', { token: token });
             rtSocketInstance.emit('auth', { token: token });
+            rtSocketInstance.emit('authentication', { token: token });
+
+            // Try subscribing to room
+            rtSocketInstance.emit('subscribe', { room: 'tomato.tpos.vn' });
+            rtSocketInstance.emit('join', 'tomato.tpos.vn');
         });
 
         rtSocketInstance.on('authenticated', (data) => {
-            console.log('✅ RT Authentication successful:', data);
+            console.log('✅ [RT] Authentication successful:', data);
+        });
+
+        rtSocketInstance.on('auth_success', (data) => {
+            console.log('✅ [RT] Auth success:', data);
+        });
+
+        rtSocketInstance.on('subscribed', (data) => {
+            console.log('✅ [RT] Subscribed:', data);
         });
 
         rtSocketInstance.on('disconnect', (reason) => {
-            console.log('❌ RT WebSocket disconnected:', reason);
+            console.log('❌ [RT] WebSocket disconnected:', reason);
             setRtSocketConnected(false);
         });
 
         rtSocketInstance.on('connect_error', (error) => {
-            console.error('🔥 RT Connection error:', error.message);
+            console.error('🔥 [RT] Connection error:', error.message);
             setRtSocketConnected(false);
         });
 
+        rtSocketInstance.on('error', (error) => {
+            console.error('❌ [RT] Error:', error);
+        });
+
         rtSocketInstance.onAny((eventName, ...args) => {
-            console.log('📡 RT Event:', eventName, args);
+            console.log('📡 [RT] Event:', eventName, args);
         });
 
         // Chat Socket (ws.chatomni.tpos.app) event handlers
         chatSocketInstance.on('connect', () => {
-            console.log('✅ Chat WebSocket connected:', chatSocketInstance.id);
+            console.log('✅ [CHAT] WebSocket connected:', chatSocketInstance.id);
             setChatSocketConnected(true);
+
+            // Try multiple authentication methods
+            console.log('🔐 [CHAT] Trying multiple auth methods...');
+            chatSocketInstance.emit('authenticate', { token: token });
             chatSocketInstance.emit('auth', { token: token });
+            chatSocketInstance.emit('authentication', { token: token });
+
+            // Try subscribing to events
+            chatSocketInstance.emit('subscribe', 'on-conversations');
+            chatSocketInstance.emit('subscribe', 'on-messages');
         });
 
         chatSocketInstance.on('authenticated', (data) => {
-            console.log('✅ Chat Authentication successful:', data);
+            console.log('✅ [CHAT] Authentication successful:', data);
+        });
+
+        chatSocketInstance.on('auth_success', (data) => {
+            console.log('✅ [CHAT] Auth success:', data);
+        });
+
+        chatSocketInstance.on('subscribed', (data) => {
+            console.log('✅ [CHAT] Subscribed:', data);
         });
 
         chatSocketInstance.on('disconnect', (reason) => {
-            console.log('❌ Chat WebSocket disconnected:', reason);
+            console.log('❌ [CHAT] WebSocket disconnected:', reason);
             setChatSocketConnected(false);
         });
 
         chatSocketInstance.on('connect_error', (error) => {
-            console.error('🔥 Chat Connection error:', error.message);
+            console.error('🔥 [CHAT] Connection error:', error.message);
             setChatSocketConnected(false);
         });
 
+        chatSocketInstance.on('error', (error) => {
+            console.error('❌ [CHAT] Error:', error);
+        });
+
         // Listen for conversation events on chat socket
-        // Protocol: 42/chatomni,["on-conversations","{...}"]
         chatSocketInstance.on('on-conversations', (data) => {
-            console.log('💬 Conversation event received:', data);
+            console.log('💬 [CHAT] on-conversations event received!');
+            console.log('📦 [CHAT] Raw data:', data);
+            console.log('📦 [CHAT] Data type:', typeof data);
             try {
                 const eventData = typeof data === 'string' ? JSON.parse(data) : data;
-                console.log('📊 Event:', eventData.EventName);
-                console.log('📦 Data:', eventData.EventData);
+                console.log('📊 [CHAT] Parsed event:', eventData);
+                console.log('📊 [CHAT] EventName:', eventData.EventName);
+                console.log('📦 [CHAT] EventData:', eventData.EventData);
 
                 // Refresh conversations list when MessageCreated event occurs
                 if (eventData.EventName === 'MessageCreated') {
+                    console.log('🔄 [CHAT] Refreshing conversations due to new message');
                     fetchConversations();
                 }
             } catch (error) {
-                console.error('❌ Error parsing conversation event:', error);
+                console.error('❌ [CHAT] Error parsing conversation event:', error);
             }
         });
 
         // Listen for message events on chat socket
-        // Protocol: 42/chatomni,["on-messages","{...}"]
         chatSocketInstance.on('on-messages', (data) => {
-            console.log('📨 Message event received:', data);
+            console.log('📨 [CHAT] on-messages event received!');
+            console.log('📦 [CHAT] Raw data:', data);
+            console.log('📦 [CHAT] Data type:', typeof data);
             try {
                 const eventData = typeof data === 'string' ? JSON.parse(data) : data;
-                console.log('📊 Event:', eventData.EventName);
-                console.log('📦 Data:', eventData.EventData);
+                console.log('📊 [CHAT] Parsed event:', eventData);
+                console.log('📊 [CHAT] EventName:', eventData.EventName);
+                console.log('📦 [CHAT] EventData:', eventData.EventData);
 
                 // Refresh messages if we're viewing this conversation
                 if (eventData.EventName === 'MessageCreated' && selectedConv) {
@@ -291,19 +347,25 @@ function ChatApp() {
 
                     if (messageChannelId === selectedConv.Channel.Id &&
                         messageUserId === selectedConv.User.Id) {
+                        console.log('🔄 [CHAT] Refreshing messages for current conversation');
                         fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
                     }
                 }
 
                 // Always refresh conversations to update unread counts
+                console.log('🔄 [CHAT] Refreshing conversations');
                 fetchConversations();
             } catch (error) {
-                console.error('❌ Error parsing message event:', error);
+                console.error('❌ [CHAT] Error parsing message event:', error);
             }
         });
 
+        // Catch all events to see what server is sending
         chatSocketInstance.onAny((eventName, ...args) => {
-            console.log('📡 Chat Event:', eventName, args);
+            console.log('📡 [CHAT] Event received:', eventName);
+            if (args.length > 0) {
+                console.log('📡 [CHAT] Event args:', args);
+            }
         });
 
         setRtSocket(rtSocketInstance);
