@@ -198,62 +198,96 @@
                 };
             }, [isAuthenticated, autoRefresh, selectedConv]);
 
-            // WebSocket connections for real-time updates (DUAL MODE)
+            // WebSocket connections for real-time updates
             useEffect(() => {
                 if (!isAuthenticated || !token) return;
 
-                console.log('🔌 Connecting to WebSocket servers...');
+                console.log('🔌 Connecting to WebSocket server...');
 
-                // ====== CONNECTION 1: ChatOmni Server ======
-                const newChatSocket = io('wss://ws.chatomni.tpos.app', {
+                // Connect to RT server with /chatomni namespace
+                const socket = io('wss://rt-2.tpos.app/chatomni', {
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
                         EIO: '4'
+                    },
+                    auth: {
+                        token: token
                     },
                     reconnection: true,
                     reconnectionDelay: 1000,
                     reconnectionAttempts: 5
                 });
 
-                // Chat Socket Events
-                newChatSocket.on('connect', () => {
-                    console.log('✅ [CHAT] WebSocket connected:', newChatSocket.id);
+                // Connection established
+                socket.on('connect', () => {
+                    console.log('✅ WebSocket connected:', socket.id);
+                    console.log('📝 Session ID:', socket.id);
                     setChatSocketConnected(true);
-                    
-                    // Authenticate with token
-                    newChatSocket.emit('40/chatomni', JSON.stringify({ token }));
-                    console.log('🔐 [CHAT] Authentication sent');
+                    setRtSocketConnected(true);
+
+                    // Send authentication to /chatomni namespace
+                    // Following the exact protocol: 40/chatomni,{"token":"..."}
+                    console.log('🔐 Sending authentication to /chatomni namespace...');
+                    socket.emit('auth', { token: token });
                 });
 
-                newChatSocket.on('disconnect', (reason) => {
-                    console.log('❌ [CHAT] WebSocket disconnected:', reason);
+                // Handle authentication response
+                socket.on('authenticated', (data) => {
+                    console.log('✅ Authentication successful:', data);
+                    if (data.sid) {
+                        console.log('📝 Namespace session ID:', data.sid);
+                    }
+                });
+
+                socket.on('disconnect', (reason) => {
+                    console.log('❌ WebSocket disconnected:', reason);
                     setChatSocketConnected(false);
+                    setRtSocketConnected(false);
                 });
 
-                newChatSocket.on('connect_error', (error) => {
-                    console.error('🔥 [CHAT] Connection error:', error.message);
+                socket.on('connect_error', (error) => {
+                    console.error('🔥 Connection error:', error.message);
                     setChatSocketConnected(false);
+                    setRtSocketConnected(false);
                 });
 
-                newChatSocket.on('reconnect', (attemptNumber) => {
-                    console.log('🔄 [CHAT] Reconnected after', attemptNumber, 'attempts');
+                socket.on('reconnect', (attemptNumber) => {
+                    console.log('🔄 Reconnected after', attemptNumber, 'attempts');
                     setChatSocketConnected(true);
+                    setRtSocketConnected(true);
                 });
 
-                // Listen for chat messages
-                newChatSocket.on('42/chatomni', (data) => {
-                    console.log('📨 [CHAT] New message received:', data);
+                // Listen for new messages
+                socket.on('message', (data) => {
+                    console.log('📨 New message received:', data);
                     fetchConversations();
                     if (selectedConv) {
                         fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
                     }
                 });
 
-                // Listen for any chat event
-                newChatSocket.onAny((eventName, ...args) => {
-                    if (eventName.includes('chatomni') || eventName.includes('message')) {
-                        console.log('📬 [CHAT] Event:', eventName, args);
+                // Listen for conversation updates
+                socket.on('conversation', (data) => {
+                    console.log('💬 Conversation update:', data);
+                    fetchConversations();
+                });
+
+                // Listen for notifications
+                socket.on('notification', (data) => {
+                    console.log('🔔 Notification:', data);
+                    fetchConversations();
+                });
+
+                // Listen for any event to debug
+                socket.onAny((eventName, ...args) => {
+                    console.log('📡 Event received:', eventName, args);
+
+                    // Auto-refresh on important events
+                    if (!eventName.includes('ping') &&
+                        !eventName.includes('pong') &&
+                        !eventName.includes('connect') &&
+                        !eventName.includes('disconnect')) {
                         fetchConversations();
                         if (selectedConv) {
                             fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
@@ -261,74 +295,13 @@
                     }
                 });
 
-                // ====== CONNECTION 2: Real-time Server ======
-                const newRtSocket = io('wss://rt-2.tpos.app', {
-                    transports: ['websocket'],
-                    query: {
-                        room: 'tomato.tpos.vn',
-                        EIO: '4'
-                    },
-                    reconnection: true,
-                    reconnectionDelay: 1000,
-                    reconnectionAttempts: 5
-                });
+                setChatSocket(socket);
+                setRtSocket(socket); // Using same socket for both states
 
-                // RT Socket Events
-                newRtSocket.on('connect', () => {
-                    console.log('✅ [RT] WebSocket connected:', newRtSocket.id);
-                    setRtSocketConnected(true);
-                    
-                    // Authenticate with token (if needed)
-                    newRtSocket.emit('authenticate', { token });
-                    console.log('🔐 [RT] Authentication sent');
-                });
-
-                newRtSocket.on('disconnect', (reason) => {
-                    console.log('❌ [RT] WebSocket disconnected:', reason);
-                    setRtSocketConnected(false);
-                });
-
-                newRtSocket.on('connect_error', (error) => {
-                    console.error('🔥 [RT] Connection error:', error.message);
-                    setRtSocketConnected(false);
-                });
-
-                newRtSocket.on('reconnect', (attemptNumber) => {
-                    console.log('🔄 [RT] Reconnected after', attemptNumber, 'attempts');
-                    setRtSocketConnected(true);
-                });
-
-                // Listen for real-time events
-                newRtSocket.on('notification', (data) => {
-                    console.log('🔔 [RT] Notification:', data);
-                    fetchConversations();
-                });
-
-                newRtSocket.on('update', (data) => {
-                    console.log('🔄 [RT] Update:', data);
-                    fetchConversations();
-                    if (selectedConv) {
-                        fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
-                    }
-                });
-
-                // Listen for any RT event
-                newRtSocket.onAny((eventName, ...args) => {
-                    console.log('📡 [RT] Event:', eventName, args);
-                    // Refresh on any significant event
-                    if (!eventName.includes('ping') && !eventName.includes('pong')) {
-                        fetchConversations();
-                    }
-                });
-
-                setChatSocket(newChatSocket);
-                setRtSocket(newRtSocket);
-
-                // Cleanup both connections
+                // Cleanup
                 return () => {
-                    console.log('🔌 Disconnecting WebSocket servers...');
-                    newChatSocket.close();
-                    newRtSocket.close();
+                    console.log('🔌 Disconnecting WebSocket...');
+                    socket.close();
                     setChatSocketConnected(false);
                     setRtSocketConnected(false);
                 };
@@ -483,34 +456,24 @@
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <p className="text-blue-100 text-sm">{conversations.length} cuộc hội thoại</p>
                                         <div className="flex gap-1">
-                                            <span 
+                                            <span
                                                 className={`text-xs px-2 py-0.5 rounded-full ${
-                                                    chatSocketConnected 
-                                                        ? 'bg-green-500 text-white' 
+                                                    chatSocketConnected
+                                                        ? 'bg-green-500 text-white'
                                                         : 'bg-gray-400 text-white'
                                                 }`}
-                                                title={chatSocketConnected ? 'Chat WebSocket connected' : 'Chat WebSocket disconnected'}
+                                                title={chatSocketConnected ? 'WebSocket connected to rt-2.tpos.app/chatomni' : 'WebSocket disconnected'}
                                             >
-                                                {chatSocketConnected ? '🟢 Chat' : '⚪ Chat'}
+                                                {chatSocketConnected ? '🟢 Connected' : '⚪ Offline'}
                                             </span>
-                                            <span 
-                                                className={`text-xs px-2 py-0.5 rounded-full ${
-                                                    rtSocketConnected 
-                                                        ? 'bg-green-500 text-white' 
-                                                        : 'bg-gray-400 text-white'
-                                                }`}
-                                                title={rtSocketConnected ? 'RT WebSocket connected' : 'RT WebSocket disconnected'}
-                                            >
-                                                {rtSocketConnected ? '🟢 RT' : '⚪ RT'}
-                                            </span>
-                                            {(chatSocketConnected || rtSocketConnected) && (
+                                            {chatSocketConnected && (
                                                 <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-400 text-gray-900 animate-pulse">
                                                     ⚡ Realtime
                                                 </span>
                                             )}
-                                            {!chatSocketConnected && !rtSocketConnected && (
+                                            {!chatSocketConnected && (
                                                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400 text-white">
-                                                    🔄 Polling
+                                                    {autoRefresh ? '🔄 Polling' : '⏸️ Manual'}
                                                 </span>
                                             )}
                                         </div>
