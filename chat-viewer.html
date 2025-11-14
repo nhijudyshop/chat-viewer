@@ -40,22 +40,9 @@
             const refreshIntervalRef = useRef(null);
 
             // Helper function to get Facebook avatar
-            const getFacebookAvatar = (user) => {
-                if (!user) return null;
-
-                // If user is just a string (ID), use proxy
-                if (typeof user === 'string') {
-                    return `/avatar/${user}`;
-                }
-
-                // If user object has AvatarUrl or ProfilePicture, use it
-                if (user.AvatarUrl) return user.AvatarUrl;
-                if (user.ProfilePicture) return user.ProfilePicture;
-                if (user.Avatar) return user.Avatar;
-
-                // Otherwise use proxy with user ID
-                const userId = user.Id || user.id || user;
-                return `/avatar/${userId}`;
+            const getFacebookAvatar = (userId) => {
+                if (!userId) return null;
+                return `https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=${userId}&height=200&width=200`;
             };
 
             // Scroll to bottom of messages
@@ -81,7 +68,7 @@
                     const response = await fetch(`${API_BASE}/token`, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Content-Type': 'application/json',
                             'accept': 'application/json',
                         },
                         body: `client_id=tmtWebApp&grant_type=password&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&scope=profile`
@@ -217,34 +204,11 @@
 
                 console.log('🔌 Connecting to WebSocket servers...');
 
-                // Helper function to parse socket.io event data
-                const parseEventData = (eventName, data) => {
-                    try {
-                        // Data comes as array format from socket.io
-                        if (Array.isArray(data)) {
-                            const [eventType, jsonStr] = data;
-                            const parsed = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
-                            console.log(`📦 [${eventName}] Type: ${eventType}, Data:`, parsed);
-                            return { eventType, data: parsed };
-                        }
-
-                        // Or direct JSON string
-                        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-                        console.log(`📦 [${eventName}] Parsed:`, parsed);
-                        return { eventType: eventName, data: parsed };
-                    } catch (error) {
-                        console.error(`❌ Failed to parse event data for ${eventName}:`, error);
-                        return null;
-                    }
-                };
-
                 // ====== CONNECTION 1: ChatOmni Server ======
-                // Connect to base URL, then socket.io will handle /chatomni namespace
-                const newChatSocket = io('wss://ws.chatomni.tpos.app/chatomni', {
+                const newChatSocket = io('wss://ws.chatomni.tpos.app', {
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
-                        token: token,  // Token is REQUIRED by server
                         EIO: '4'
                     },
                     reconnection: true,
@@ -254,9 +218,12 @@
 
                 // Chat Socket Events
                 newChatSocket.on('connect', () => {
-                    console.log('✅ [CHAT] WebSocket connected to /chatomni namespace:', newChatSocket.id);
-                    console.log('✅ [CHAT] Namespace:', newChatSocket.nsp);
+                    console.log('✅ [CHAT] WebSocket connected:', newChatSocket.id);
                     setChatSocketConnected(true);
+                    
+                    // Authenticate with token
+                    newChatSocket.emit('40/chatomni', JSON.stringify({ token }));
+                    console.log('🔐 [CHAT] Authentication sent');
                 });
 
                 newChatSocket.on('disconnect', (reason) => {
@@ -274,51 +241,31 @@
                     setChatSocketConnected(true);
                 });
 
-                // Listen for 'on-messages' event (format: ["on-messages", "{json}"])
-                newChatSocket.on('on-messages', (...args) => {
-                    console.log('📨 [CHAT] on-messages raw args:', args);
-                    const parsed = parseEventData('on-messages', args);
-                    if (parsed?.data?.EventName === 'MessageCreated') {
-                        console.log('✉️ [CHAT] New message created:', parsed.data.EventData);
-                        // Refresh current conversation messages
+                // Listen for chat messages
+                newChatSocket.on('42/chatomni', (data) => {
+                    console.log('📨 [CHAT] New message received:', data);
+                    fetchConversations();
+                    if (selectedConv) {
+                        fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
+                    }
+                });
+
+                // Listen for any chat event
+                newChatSocket.onAny((eventName, ...args) => {
+                    if (eventName.includes('chatomni') || eventName.includes('message')) {
+                        console.log('📬 [CHAT] Event:', eventName, args);
+                        fetchConversations();
                         if (selectedConv) {
                             fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
                         }
                     }
                 });
 
-                // Listen for 'on-conversations' event
-                newChatSocket.on('on-conversations', (...args) => {
-                    console.log('💬 [CHAT] on-conversations raw args:', args);
-                    const parsed = parseEventData('on-conversations', args);
-                    if (parsed?.data?.EventName === 'MessageCreated') {
-                        console.log('🔄 [CHAT] Conversation updated:', parsed.data.EventData);
-                        fetchConversations();
-                    }
-                });
-
-                // Listen for 'on-events' event (generic events)
-                newChatSocket.on('on-events', (...args) => {
-                    console.log('📬 [CHAT] on-events raw args:', args);
-                    const parsed = parseEventData('on-events', args);
-                    console.log('📬 [CHAT] Parsed event:', parsed);
-                    // Refresh conversations on conversation-related events
-                    if (parsed?.data?.Conversation || parsed?.data?.Message) {
-                        fetchConversations();
-                    }
-                });
-
-                // Debug: Listen to ALL events
-                newChatSocket.onAny((eventName, ...args) => {
-                    console.log('🔍 [CHAT] Any event:', eventName, 'Args:', args);
-                });
-
                 // ====== CONNECTION 2: Real-time Server ======
-                const newRtSocket = io('wss://rt-2.tpos.app/chatomni', {
+                const newRtSocket = io('wss://rt-2.tpos.app', {
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
-                        token: token,  // Token is REQUIRED by server
                         EIO: '4'
                     },
                     reconnection: true,
@@ -328,9 +275,12 @@
 
                 // RT Socket Events
                 newRtSocket.on('connect', () => {
-                    console.log('✅ [RT] WebSocket connected to /chatomni namespace:', newRtSocket.id);
-                    console.log('✅ [RT] Namespace:', newRtSocket.nsp);
+                    console.log('✅ [RT] WebSocket connected:', newRtSocket.id);
                     setRtSocketConnected(true);
+                    
+                    // Authenticate with token (if needed)
+                    newRtSocket.emit('authenticate', { token });
+                    console.log('🔐 [RT] Authentication sent');
                 });
 
                 newRtSocket.on('disconnect', (reason) => {
@@ -348,24 +298,27 @@
                     setRtSocketConnected(true);
                 });
 
-                // Listen for 'on-events' from RT server (orders, products, etc.)
-                newRtSocket.on('on-events', (...args) => {
-                    console.log('🔔 [RT] on-events raw args:', args);
-                    const parsed = parseEventData('on-events', args);
-                    console.log('🔔 [RT] Parsed event:', parsed);
+                // Listen for real-time events
+                newRtSocket.on('notification', (data) => {
+                    console.log('🔔 [RT] Notification:', data);
+                    fetchConversations();
+                });
 
-                    // Refresh on important events
-                    if (parsed?.data?.Type === 'SaleOnline_Order' || parsed?.data?.Conversation) {
-                        fetchConversations();
-                        if (selectedConv) {
-                            fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
-                        }
+                newRtSocket.on('update', (data) => {
+                    console.log('🔄 [RT] Update:', data);
+                    fetchConversations();
+                    if (selectedConv) {
+                        fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
                     }
                 });
 
-                // Debug: Listen to ALL events
+                // Listen for any RT event
                 newRtSocket.onAny((eventName, ...args) => {
-                    console.log('🔍 [RT] Any event:', eventName, 'Args:', args);
+                    console.log('📡 [RT] Event:', eventName, args);
+                    // Refresh on any significant event
+                    if (!eventName.includes('ping') && !eventName.includes('pong')) {
+                        fetchConversations();
+                    }
                 });
 
                 setChatSocket(newChatSocket);
@@ -610,9 +563,9 @@
                                         <div className="flex gap-3">
                                             {/* Avatar */}
                                             <div className="flex-shrink-0">
-                                                {getFacebookAvatar(conv.User) ? (
+                                                {getFacebookAvatar(conv.User?.Id) ? (
                                                     <img
-                                                        src={getFacebookAvatar(conv.User)}
+                                                        src={getFacebookAvatar(conv.User.Id)}
                                                         alt={conv.Name}
                                                         className="w-12 h-12 rounded-full object-cover"
                                                         onError={(e) => {
@@ -662,9 +615,9 @@
                                 <div className="bg-white p-4 border-b border-gray-200 shadow-sm">
                                     <div className="flex items-center gap-3">
                                         {/* Avatar */}
-                                        {getFacebookAvatar(selectedConv.User) ? (
+                                        {getFacebookAvatar(selectedConv.User?.Id) ? (
                                             <img
-                                                src={getFacebookAvatar(selectedConv.User)}
+                                                src={getFacebookAvatar(selectedConv.User.Id)}
                                                 alt={selectedConv.Name}
                                                 className="w-12 h-12 rounded-full object-cover"
                                                 onError={(e) => {
