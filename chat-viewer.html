@@ -204,15 +204,13 @@
 
                 console.log('🔌 Connecting to WebSocket server...');
 
-                // Connect to RT server with /chatomni namespace
-                const socket = io('wss://rt-2.tpos.app/chatomni', {
+                // Connect to ws.chatomni.tpos.app with /chatomni namespace
+                // URL format: wss://ws.chatomni.tpos.app/socket.io/?room=tomato.tpos.vn&EIO=4&transport=websocket
+                const socket = io('wss://ws.chatomni.tpos.app/chatomni', {
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
                         EIO: '4'
-                    },
-                    auth: {
-                        token: token
                     },
                     reconnection: true,
                     reconnectionDelay: 1000,
@@ -258,41 +256,54 @@
                     setRtSocketConnected(true);
                 });
 
-                // Listen for new messages
-                socket.on('message', (data) => {
-                    console.log('📨 New message received:', data);
-                    fetchConversations();
-                    if (selectedConv) {
-                        fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
+                // Listen for conversation events
+                // Protocol: 42/chatomni,["on-conversations","{...}"]
+                socket.on('on-conversations', (data) => {
+                    console.log('💬 Conversation event received:', data);
+                    try {
+                        const eventData = typeof data === 'string' ? JSON.parse(data) : data;
+                        console.log('📊 Event:', eventData.EventName);
+                        console.log('📦 Data:', eventData.EventData);
+
+                        // Refresh conversations list when MessageCreated event occurs
+                        if (eventData.EventName === 'MessageCreated') {
+                            fetchConversations();
+                        }
+                    } catch (error) {
+                        console.error('❌ Error parsing conversation event:', error);
                     }
                 });
 
-                // Listen for conversation updates
-                socket.on('conversation', (data) => {
-                    console.log('💬 Conversation update:', data);
-                    fetchConversations();
-                });
+                // Listen for message events
+                // Protocol: 42/chatomni,["on-messages","{...}"]
+                socket.on('on-messages', (data) => {
+                    console.log('📨 Message event received:', data);
+                    try {
+                        const eventData = typeof data === 'string' ? JSON.parse(data) : data;
+                        console.log('📊 Event:', eventData.EventName);
+                        console.log('📦 Data:', eventData.EventData);
 
-                // Listen for notifications
-                socket.on('notification', (data) => {
-                    console.log('🔔 Notification:', data);
-                    fetchConversations();
+                        // Refresh messages if we're viewing this conversation
+                        if (eventData.EventName === 'MessageCreated' && selectedConv) {
+                            const messageChannelId = eventData.EventData?.Channel?.Id;
+                            const messageUserId = eventData.EventData?.Owner?.Id || eventData.EventData?.User?.Id;
+
+                            if (messageChannelId === selectedConv.Channel.Id &&
+                                messageUserId === selectedConv.User.Id) {
+                                fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
+                            }
+                        }
+
+                        // Always refresh conversations to update unread counts
+                        fetchConversations();
+                    } catch (error) {
+                        console.error('❌ Error parsing message event:', error);
+                    }
                 });
 
                 // Listen for any event to debug
                 socket.onAny((eventName, ...args) => {
                     console.log('📡 Event received:', eventName, args);
-
-                    // Auto-refresh on important events
-                    if (!eventName.includes('ping') &&
-                        !eventName.includes('pong') &&
-                        !eventName.includes('connect') &&
-                        !eventName.includes('disconnect')) {
-                        fetchConversations();
-                        if (selectedConv) {
-                            fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
-                        }
-                    }
                 });
 
                 setChatSocket(socket);
@@ -305,7 +316,7 @@
                     setChatSocketConnected(false);
                     setRtSocketConnected(false);
                 };
-            }, [isAuthenticated, token]);
+            }, [isAuthenticated, token, selectedConv]);
 
             // Handle login
             const handleLogin = () => {
@@ -462,7 +473,7 @@
                                                         ? 'bg-green-500 text-white'
                                                         : 'bg-gray-400 text-white'
                                                 }`}
-                                                title={chatSocketConnected ? 'WebSocket connected to rt-2.tpos.app/chatomni' : 'WebSocket disconnected'}
+                                                title={chatSocketConnected ? 'WebSocket connected to ws.chatomni.tpos.app/chatomni' : 'WebSocket disconnected'}
                                             >
                                                 {chatSocketConnected ? '🟢 Connected' : '⚪ Offline'}
                                             </span>
