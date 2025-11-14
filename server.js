@@ -10,6 +10,10 @@ const API_BASE = "https://tomato.tpos.vn";
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from public and dist directories
+app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/dist', express.static(path.join(__dirname, 'dist')));
 app.use(express.static(__dirname));
 
 // Lưu trữ giá trị mặc định động
@@ -136,9 +140,17 @@ app.post("/config/reset", (req, res) => {
     });
 });
 
-// Serve HTML
+// Serve HTML - use production build if available, fallback to dev version
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "chat-viewer.html"));
+    const productionHTML = path.join(__dirname, "index.html");
+    const devHTML = path.join(__dirname, "chat-viewer.html");
+
+    // Check if production build exists
+    if (require('fs').existsSync(productionHTML)) {
+        res.sendFile(productionHTML);
+    } else {
+        res.sendFile(devHTML);
+    }
 });
 
 // Start server
