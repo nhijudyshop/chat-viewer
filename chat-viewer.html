@@ -40,9 +40,22 @@
             const refreshIntervalRef = useRef(null);
 
             // Helper function to get Facebook avatar
-            const getFacebookAvatar = (userId) => {
-                if (!userId) return null;
-                return `https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=${userId}&height=200&width=200`;
+            const getFacebookAvatar = (user) => {
+                if (!user) return null;
+
+                // If user is just a string (ID), use proxy
+                if (typeof user === 'string') {
+                    return `/avatar/${user}`;
+                }
+
+                // If user object has AvatarUrl or ProfilePicture, use it
+                if (user.AvatarUrl) return user.AvatarUrl;
+                if (user.ProfilePicture) return user.ProfilePicture;
+                if (user.Avatar) return user.Avatar;
+
+                // Otherwise use proxy with user ID
+                const userId = user.Id || user.id || user;
+                return `/avatar/${userId}`;
             };
 
             // Scroll to bottom of messages
@@ -584,9 +597,9 @@
                                         <div className="flex gap-3">
                                             {/* Avatar */}
                                             <div className="flex-shrink-0">
-                                                {getFacebookAvatar(conv.User?.Id) ? (
+                                                {getFacebookAvatar(conv.User) ? (
                                                     <img
-                                                        src={getFacebookAvatar(conv.User.Id)}
+                                                        src={getFacebookAvatar(conv.User)}
                                                         alt={conv.Name}
                                                         className="w-12 h-12 rounded-full object-cover"
                                                         onError={(e) => {
@@ -636,9 +649,9 @@
                                 <div className="bg-white p-4 border-b border-gray-200 shadow-sm">
                                     <div className="flex items-center gap-3">
                                         {/* Avatar */}
-                                        {getFacebookAvatar(selectedConv.User?.Id) ? (
+                                        {getFacebookAvatar(selectedConv.User) ? (
                                             <img
-                                                src={getFacebookAvatar(selectedConv.User.Id)}
+                                                src={getFacebookAvatar(selectedConv.User)}
                                                 alt={selectedConv.Name}
                                                 className="w-12 h-12 rounded-full object-cover"
                                                 onError={(e) => {

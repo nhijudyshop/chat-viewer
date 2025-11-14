@@ -136,6 +136,41 @@ app.post("/config/reset", (req, res) => {
     });
 });
 
+// Avatar proxy - Forward requests to Facebook with correct Referer
+app.get("/avatar/:psid", async (req, res) => {
+    try {
+        const { psid } = req.params;
+        const { eai, ext, hash, height = 200, width = 200 } = req.query;
+
+        // Build Facebook avatar URL with all params
+        let avatarUrl = `https://platform-lookaside.fbsbx.com/platform/profilepic/?psid=${psid}&height=${height}&width=${width}`;
+        if (eai) avatarUrl += `&eai=${eai}`;
+        if (ext) avatarUrl += `&ext=${ext}`;
+        if (hash) avatarUrl += `&hash=${hash}`;
+
+        // Fetch with correct Referer
+        const response = await axios({
+            method: 'GET',
+            url: avatarUrl,
+            headers: {
+                'Referer': 'https://tomato.tpos.vn/',
+                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+            },
+            responseType: 'arraybuffer',
+            validateStatus: () => true,
+        });
+
+        // Forward image response
+        res.set('Content-Type', response.headers['content-type'] || 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=86400'); // Cache 24h
+        res.send(response.data);
+    } catch (error) {
+        console.error('❌ Avatar proxy error:', error.message);
+        // Return 404 on error
+        res.status(404).send();
+    }
+});
+
 // Serve HTML
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "chat-viewer.html"));
