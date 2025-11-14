@@ -3,6 +3,78 @@
 ## 📋 Tổng quan
 Web app để xem và quản lý tin nhắn chat từ hệ thống ChatOmni của TPOS.
 
+## 🏭 Production Build (MỚI)
+
+### Những thay đổi cho Production
+
+**Trước đây (Development Mode):**
+- ❌ Tailwind CSS qua CDN (không dùng cho production)
+- ❌ Babel chạy trên trình duyệt (chậm, không tối ưu)
+- ❌ Thiếu favicon (lỗi 404)
+- ❌ CSP violations cho source maps
+
+**Bây giờ (Production Mode):**
+- ✅ Tailwind CSS được compile sẵn với PostCSS
+- ✅ JSX/React được biên dịch trước với Babel
+- ✅ CSS và JavaScript đã được minify
+- ✅ Đã thêm favicon
+- ✅ Tối ưu hóa cho production
+
+### Build Production
+
+Để build ứng dụng cho production:
+
+```bash
+# Cài đặt dependencies (bao gồm cả devDependencies)
+npm install
+
+# Build production
+npm run build
+```
+
+Lệnh này sẽ:
+1. Compile Tailwind CSS từ `src/styles.css` → `dist/styles.css` (minified)
+2. Biên dịch JSX từ `src/app.jsx` → `dist/app.js` với Babel
+3. Minify JavaScript → `dist/app.min.js` với Terser
+4. Tạo file `index.html` production
+
+### Chạy Production
+
+```bash
+npm start
+# Server tự động dùng bản production nếu đã build
+```
+
+### Development với Watch Mode
+
+Khi đang phát triển, chạy các lệnh sau trong terminal riêng để tự động rebuild khi có thay đổi:
+
+```bash
+# Watch CSS changes
+npm run watch:css
+
+# Watch JS changes
+npm run watch:js
+```
+
+### Cấu trúc thư mục
+
+```
+chat-viewer/
+├── src/
+│   ├── app.jsx          # Source code React
+│   └── styles.css       # Tailwind CSS input
+├── dist/                # Build output (gitignored)
+│   ├── styles.css       # CSS đã compile
+│   ├── app.js           # JavaScript đã compile
+│   └── app.min.js       # JavaScript đã minify
+├── public/
+│   └── favicon.svg      # Icon ứng dụng
+├── chat-viewer.html     # Development HTML (dùng CDN)
+├── index.html           # Production HTML (tự động tạo)
+└── server.js            # Express server
+```
+
 ## 🚀 Cách chạy (npm)
 
 ### Bước 1: Cài đặt Node.js
