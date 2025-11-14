@@ -9,6 +9,7 @@
     "build:css": "npx tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
     "build:js": "npx babel src/app.jsx --out-file dist/app.js && npx terser dist/app.js -o dist/app.min.js -c -m",
     "build": "npm run build:css && npm run build:js && node build-html.js",
+    "postinstall": "npm run build",
     "watch:css": "npx tailwindcss -i ./src/styles.css -o ./dist/styles.css --watch",
     "watch:js": "npx babel src/app.jsx --out-file dist/app.js --watch"
   },
