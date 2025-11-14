@@ -244,8 +244,8 @@
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
+                        token: token,  // Token is REQUIRED by server
                         EIO: '4'
-                        // Note: token is NOT in query based on network trace
                     },
                     reconnection: true,
                     reconnectionDelay: 1000,
@@ -318,8 +318,8 @@
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
+                        token: token,  // Token is REQUIRED by server
                         EIO: '4'
-                        // Note: token is NOT in query based on network trace
                     },
                     reconnection: true,
                     reconnectionDelay: 1000,
