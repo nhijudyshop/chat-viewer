@@ -204,12 +204,27 @@
 
                 console.log('🔌 Connecting to WebSocket servers...');
 
+                // Helper function to parse socket.io event data
+                const parseEventData = (eventName, data) => {
+                    try {
+                        // Data comes as JSON string, parse it
+                        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+                        console.log(`📦 [${eventName}] Parsed:`, parsed);
+                        return parsed;
+                    } catch (error) {
+                        console.error(`❌ Failed to parse event data for ${eventName}:`, error);
+                        return null;
+                    }
+                };
+
                 // ====== CONNECTION 1: ChatOmni Server ======
-                const newChatSocket = io('wss://ws.chatomni.tpos.app', {
+                // Connect to /chatomni namespace with token in auth
+                const newChatSocket = io('wss://ws.chatomni.tpos.app/chatomni', {
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
-                        EIO: '4'
+                        EIO: '4',
+                        token: token  // Pass token in query
                     },
                     reconnection: true,
                     reconnectionDelay: 1000,
@@ -218,12 +233,8 @@
 
                 // Chat Socket Events
                 newChatSocket.on('connect', () => {
-                    console.log('✅ [CHAT] WebSocket connected:', newChatSocket.id);
+                    console.log('✅ [CHAT] WebSocket connected to /chatomni:', newChatSocket.id);
                     setChatSocketConnected(true);
-                    
-                    // Authenticate with token
-                    newChatSocket.emit('40/chatomni', JSON.stringify({ token }));
-                    console.log('🔐 [CHAT] Authentication sent');
                 });
 
                 newChatSocket.on('disconnect', (reason) => {
@@ -241,32 +252,50 @@
                     setChatSocketConnected(true);
                 });
 
-                // Listen for chat messages
-                newChatSocket.on('42/chatomni', (data) => {
-                    console.log('📨 [CHAT] New message received:', data);
-                    fetchConversations();
-                    if (selectedConv) {
-                        fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
-                    }
-                });
-
-                // Listen for any chat event
-                newChatSocket.onAny((eventName, ...args) => {
-                    if (eventName.includes('chatomni') || eventName.includes('message')) {
-                        console.log('📬 [CHAT] Event:', eventName, args);
-                        fetchConversations();
+                // Listen for 'on-messages' event (real format from network trace)
+                newChatSocket.on('on-messages', (data) => {
+                    const parsed = parseEventData('on-messages', data);
+                    if (parsed?.EventName === 'MessageCreated') {
+                        console.log('📨 [CHAT] New message:', parsed.EventData);
+                        // Refresh current conversation messages
                         if (selectedConv) {
                             fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
                         }
                     }
                 });
 
+                // Listen for 'on-conversations' event
+                newChatSocket.on('on-conversations', (data) => {
+                    const parsed = parseEventData('on-conversations', data);
+                    if (parsed?.EventName === 'MessageCreated') {
+                        console.log('💬 [CHAT] Conversation updated:', parsed.EventData);
+                        fetchConversations();
+                    }
+                });
+
+                // Listen for 'on-events' event (generic events)
+                newChatSocket.on('on-events', (data) => {
+                    const parsed = parseEventData('on-events', data);
+                    console.log('📬 [CHAT] Event:', parsed);
+                    // Refresh conversations on any event
+                    if (parsed?.Conversation) {
+                        fetchConversations();
+                    }
+                });
+
+                // Debug: Listen to all events
+                newChatSocket.onAny((eventName, ...args) => {
+                    console.log('🔍 [CHAT] Any event:', eventName, args);
+                });
+
                 // ====== CONNECTION 2: Real-time Server ======
-                const newRtSocket = io('wss://rt-2.tpos.app', {
+                // Connect to /chatomni namespace with token in auth
+                const newRtSocket = io('wss://rt-2.tpos.app/chatomni', {
                     transports: ['websocket'],
                     query: {
                         room: 'tomato.tpos.vn',
-                        EIO: '4'
+                        EIO: '4',
+                        token: token  // Pass token in query
                     },
                     reconnection: true,
                     reconnectionDelay: 1000,
@@ -275,12 +304,8 @@
 
                 // RT Socket Events
                 newRtSocket.on('connect', () => {
-                    console.log('✅ [RT] WebSocket connected:', newRtSocket.id);
+                    console.log('✅ [RT] WebSocket connected to /chatomni:', newRtSocket.id);
                     setRtSocketConnected(true);
-                    
-                    // Authenticate with token (if needed)
-                    newRtSocket.emit('authenticate', { token });
-                    console.log('🔐 [RT] Authentication sent');
                 });
 
                 newRtSocket.on('disconnect', (reason) => {
@@ -298,27 +323,23 @@
                     setRtSocketConnected(true);
                 });
 
-                // Listen for real-time events
-                newRtSocket.on('notification', (data) => {
-                    console.log('🔔 [RT] Notification:', data);
-                    fetchConversations();
-                });
+                // Listen for 'on-events' from RT server (orders, products, etc.)
+                newRtSocket.on('on-events', (data) => {
+                    const parsed = parseEventData('on-events', data);
+                    console.log('🔔 [RT] Event:', parsed);
 
-                newRtSocket.on('update', (data) => {
-                    console.log('🔄 [RT] Update:', data);
-                    fetchConversations();
-                    if (selectedConv) {
-                        fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
-                    }
-                });
-
-                // Listen for any RT event
-                newRtSocket.onAny((eventName, ...args) => {
-                    console.log('📡 [RT] Event:', eventName, args);
-                    // Refresh on any significant event
-                    if (!eventName.includes('ping') && !eventName.includes('pong')) {
+                    // Refresh on important events
+                    if (parsed?.Type === 'SaleOnline_Order' || parsed?.Conversation) {
                         fetchConversations();
+                        if (selectedConv) {
+                            fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
+                        }
                     }
+                });
+
+                // Debug: Listen to all events
+                newRtSocket.onAny((eventName, ...args) => {
+                    console.log('🔍 [RT] Any event:', eventName, args);
                 });
 
                 setChatSocket(newChatSocket);
