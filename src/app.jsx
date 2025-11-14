@@ -308,6 +308,37 @@ function ChatApp() {
             console.error('❌ [CHAT] Error:', error);
         });
 
+        // Listen for general events on chat socket (on-events)
+        chatSocketInstance.on('on-events', (data) => {
+            console.log('⚡ [CHAT] on-events received!');
+            console.log('📦 [CHAT] Raw data:', data);
+            try {
+                const eventData = typeof data === 'string' ? JSON.parse(data) : data;
+                console.log('📊 [CHAT] Event:', eventData);
+                console.log('📊 [CHAT] EventName:', eventData.EventName);
+
+                // Handle different event types
+                if (eventData.EventName === 'chatomni.on-message') {
+                    console.log('🔄 [CHAT] New message event, refreshing...');
+                    fetchConversations();
+
+                    // Also refresh current conversation if viewing
+                    if (selectedConv && eventData.Message) {
+                        const messageChannelId = eventData.Message.ChannelId;
+                        const messageUserId = eventData.Message.UserId;
+
+                        if (messageChannelId === selectedConv.Channel.Id &&
+                            messageUserId === selectedConv.User.Id) {
+                            console.log('🔄 [CHAT] Refreshing current conversation messages');
+                            fetchMessages(selectedConv.Channel.Id, selectedConv.User.Id);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('❌ [CHAT] Error parsing on-events:', error);
+            }
+        });
+
         // Listen for conversation events on chat socket
         chatSocketInstance.on('on-conversations', (data) => {
             console.log('💬 [CHAT] on-conversations event received!');
