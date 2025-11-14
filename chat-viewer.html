@@ -5,16 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
-        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.socket.io https://unpkg.com;
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com;
         style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
-        connect-src 'self' https://tomato.tpos.vn https://rt-2.tpos.app https://ws.chatomni.tpos.app wss://rt-2.tpos.app wss://ws.chatomni.tpos.app ws://localhost:* http://localhost:*;
+        connect-src 'self' https://tomato.tpos.vn ws://localhost:* http://localhost:*;
         img-src 'self' data: https: http:;
         font-src 'self' data:;
         worker-src 'self' blob:;
     ">
     <title>ChatOmni Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
